@@ -19,10 +19,16 @@ export async function clientAction({ request }: Route.ActionArgs) {
   const room = formData.get('room');
 
   // store username
-  sessionStorage.setItem('chat-username', String(username));
+  sessionStorage.setItem(
+    'chat-user',
+    JSON.stringify({
+      username,
+      userId: crypto.randomUUID(),
+    }),
+  );
 
   // navigate to room
-  return redirect(`/chat/${encodeURIComponent(String(room))}`);
+  return redirect(`/room/${encodeURIComponent(String(room))}`);
 }
 
 export default function Join() {

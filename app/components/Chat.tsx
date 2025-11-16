@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import useWebSocket from '~/hooks/useWebSocket';
+import { ScrollArea } from '~/components/ui/scroll-area';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
-import { ScrollArea } from '~/components/ui/scroll-area';
 
-import type { Route } from './+types/chat';
-import UsernamePrompt from '~/components/UsernamePrompt';
+interface ChatProps {
+  username: string;
+  userId: string;
+  roomName: string;
+}
 
 type MessageType = 'message' | 'join' | 'leave';
 
@@ -21,40 +24,19 @@ const formatTime = (timestamp: number) => {
   return new Date(timestamp).toLocaleTimeString();
 };
 
-export async function clientAction({ request }: Route.ClientActionArgs) {
-  const formData = await request.formData();
-  const username = formData.get('username');
-
-  sessionStorage.setItem('chat-username', String(username));
-
-  return { username };
-}
-
-export default function Chat({ params, actionData }: Route.ComponentProps) {
+const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentUser, setCurrentUser] = useState<{
-    username: string;
-    userId: string;
-  } | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  useEffect(() => {
-    // check for stored username
-    const storedUser = sessionStorage.getItem('chat-username');
-    if (storedUser) {
-      setCurrentUser({ username: storedUser, userId: crypto.randomUUID() });
-    }
-  }, [actionData?.username]);
-
   const handleMessage = (e: Message) => {
     setMessages((prev) => [...prev, e]);
   };
 
-  const { sendEvent, isConnected } = useWebSocket(params.room, handleMessage);
+  const { sendEvent, isConnected } = useWebSocket(roomName, handleMessage);
 
   const [inputMessage, setInputMessage] = useState('');
 
@@ -67,7 +49,7 @@ export default function Chat({ params, actionData }: Route.ComponentProps) {
       type: 'message',
       content: inputMessage.trim(),
       timestamp: Date.now(),
-      username: currentUser?.username,
+      username,
     };
 
     sendEvent(message);
@@ -88,17 +70,13 @@ export default function Chat({ params, actionData }: Route.ComponentProps) {
     { id: 'u4', name: 'Diana', avatar: '/avatars/diana.jpg' },
   ];
 
-  if (!currentUser) {
-    return <UsernamePrompt roomName={params.room} />;
-  }
-
   return (
     <div className="flex grow h-[600px] max-w-4xl border rounded-lg overflow-hidden">
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1">
         {/* Room Title Area */}
         <div className="p-4 border-b flex justify-between">
-          <h2 className="text-lg font-semibold">#{params.room}</h2>
+          <h2 className="text-lg font-semibold">#{roomName}</h2>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-400 dark:text-gray-400">
               {isConnected ? 'Online' : 'Disconnected'}
@@ -117,14 +95,12 @@ export default function Chat({ params, actionData }: Route.ComponentProps) {
             <div
               key={idx}
               className={`flex flex-col mb-4 ${
-                message.username === currentUser?.username
-                  ? 'items-end'
-                  : 'items-start'
+                message.username === username ? 'items-end' : 'items-start'
               }`}
             >
               <div
                 className={`max-w-[70%] p-3 rounded-lg ${
-                  message.username === currentUser?.username
+                  message.username === username
                     ? 'bg-blue-500 text-white'
                     : 'bg-gray-200 text-gray-800'
                 }`}
@@ -133,15 +109,13 @@ export default function Chat({ params, actionData }: Route.ComponentProps) {
               </div>
               <div
                 className={`text-xs mt-1 ${
-                  message.username === currentUser?.username
+                  message.username === username
                     ? 'text-gray-500 dark:text-gray-400 text-right'
                     : 'text-gray-500 dark:text-gray-400 text-left'
                 }`}
               >
-                {message.username === currentUser?.username
-                  ? 'You'
-                  : message.username}{' '}
-                at {formatTime(message.timestamp)}
+                {message.username === username ? 'You' : message.username} at{' '}
+                {formatTime(message.timestamp)}
               </div>
             </div>
           ))}
@@ -181,4 +155,6 @@ export default function Chat({ params, actionData }: Route.ComponentProps) {
       </div>
     </div>
   );
-}
+};
+
+export default Chat;
