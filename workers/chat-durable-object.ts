@@ -1,5 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 
+interface UserSession {
+  username: string;
+  userId: string;
+  joinedAt: number;
+}
+
 type MessageType = 'message' | 'join' | 'leave';
 
 interface Message {
@@ -11,7 +17,7 @@ interface Message {
 }
 
 export class ChatWebSocketServer extends DurableObject<Env> {
-  sessions: Map<WebSocket, { [key: string]: string }>;
+  sessions: Map<WebSocket, UserSession>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -40,15 +46,6 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     // that the socket is hibernatable and can be reconstructed after sleep
     this.ctx.acceptWebSocket(server);
 
-    // generate random ID
-    const id = crypto.randomUUID();
-
-    // attach id to ws and serialize it
-    server.serializeAttachment({ id });
-
-    // add to active sessions
-    this.sessions.set(server, { id });
-
     return new Response(null, {
       status: 101,
       webSocket: client,
@@ -73,25 +70,80 @@ export class ChatWebSocketServer extends DurableObject<Env> {
 
     // handle different message types
     switch (messageData.type) {
+      case 'join':
+        this.handleJoinRoom(ws, messageData);
+        break;
+      case 'leave':
+        console.log('leave');
+        this.handleLeaveRoom(ws, messageData);
+        break;
       case 'message':
-        console.log('broadcast');
-        this.broadcastMessage(ws, message);
-        return;
+        this.broadcastMessage(messageData);
+        break;
       default:
         console.log('default');
         return;
     }
   }
 
-  private broadcastMessage(
-    originatingWs: WebSocket,
-    message: string | ArrayBuffer,
-  ) {
-    for (const [ws, session] of this.sessions) {
-      // if (originatingWs !== ws) {
-      //   ws.send(message);
-      // }
-      ws.send(message);
+  private handleLeaveRoom(ws: WebSocket, data: any) {
+    const session = this.sessions.get(ws);
+    if (!session) {
+      return;
+    }
+    const { username, userId } = session;
+
+    // remove session
+    this.sessions.delete(ws);
+
+    const leaveMessage = {
+      type: 'user_left',
+      username,
+      userId,
+      timestamp: Date.now(),
+      users: Array.from(this.sessions.values()),
+    };
+
+    this.broadcastMessage(leaveMessage);
+  }
+
+  private handleJoinRoom(ws: WebSocket, data: any) {
+    const { username, userId } = data;
+    console.log({ username, userId });
+
+    // store user session
+    this.sessions.set(ws, {
+      username,
+      userId,
+      joinedAt: Date.now(),
+    });
+
+    ws.serializeAttachment({
+      username,
+      userId,
+      joinedAt: Date.now(),
+    });
+
+    const joinMessage = {
+      type: 'user_joined',
+      username,
+      userId,
+      timestamp: Date.now(),
+      users: Array.from(this.sessions.values()),
+    };
+
+    // notify all users that someone joined
+    this.broadcastMessage(joinMessage);
+  }
+
+  private broadcastMessage(message: any) {
+    for (const [ws] of this.sessions) {
+      try {
+        ws.send(JSON.stringify(message));
+      } catch (e) {
+        console.error('failed to send message to socket', e);
+        this.sessions.delete(ws);
+      }
     }
   }
 

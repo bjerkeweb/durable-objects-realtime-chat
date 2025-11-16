@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
-const useWebSocket = (room: string, handleMessage: (event: any) => void) => {
+interface Opts {
+  room: string;
+  handleMessage: (event: any) => void;
+  onConnect?: () => void;
+  onClose?: () => void;
+}
+
+const useWebSocket = ({ room, handleMessage, onClose, onConnect }: Opts) => {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket>(null);
 
@@ -18,20 +25,33 @@ const useWebSocket = (room: string, handleMessage: (event: any) => void) => {
 
       socket.onopen = () => {
         setIsConnected(true);
+        onConnect?.();
         console.log('websocket opened');
       };
 
       socket.onclose = () => {
+        onClose?.();
         setIsConnected(false);
       };
     }
 
     return () => {
       if (socket) {
+        onClose?.();
         console.log('socket closing');
         socket.close();
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      onClose?.();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
   const sendEvent = (event: any) => {

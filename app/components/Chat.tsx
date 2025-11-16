@@ -3,11 +3,18 @@ import useWebSocket from '~/hooks/useWebSocket';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
+import { render } from 'hono/jsx/dom';
 
 interface ChatProps {
   username: string;
   userId: string;
   roomName: string;
+}
+
+interface User {
+  username: string;
+  userId: string;
+  joinedAt: number;
 }
 
 type MessageType = 'message' | 'join' | 'leave';
@@ -27,16 +34,42 @@ const formatTime = (timestamp: number) => {
 const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+
+  console.log(messages);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleMessage = (e: Message) => {
-    setMessages((prev) => [...prev, e]);
+  const handleMessage = (msg: Message) => {
+    console.log('message', msg);
+    if (msg.type === 'user_joined' || msg.type === 'user_left') {
+      setUsers(msg.users || []);
+    }
+
+    setMessages((prev) => [...prev, msg]);
   };
 
-  const { sendEvent, isConnected } = useWebSocket(roomName, handleMessage);
+  const { sendEvent, isConnected } = useWebSocket({
+    room: roomName,
+    handleMessage,
+    onConnect: () =>
+      sendEvent({
+        type: 'join',
+        username,
+        userId,
+        timestamp: Date.now(),
+      }),
+    onClose: () => {
+      sendEvent({
+        type: 'leave',
+        username,
+        userId,
+        timestamp: Date.now(),
+      });
+    },
+  });
 
   const [inputMessage, setInputMessage] = useState('');
 
@@ -63,12 +96,58 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
     }
   };
 
-  const onlineUsers = [
-    { id: 'u1', name: 'Alice', avatar: '/avatars/alice.jpg' },
-    { id: 'u2', name: 'Bob', avatar: '/avatars/bob.jpg' },
-    { id: 'u3', name: 'Charlie', avatar: '/avatars/charlie.jpg' },
-    { id: 'u4', name: 'Diana', avatar: '/avatars/diana.jpg' },
-  ];
+  const renderMessage = (message: Message, index: number) => {
+    if (message.type === 'user_joined') {
+      return (
+        <div key={index} className="text-center">
+          <div className="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-sm mb-2">
+            {message.username} joined the room
+          </div>
+        </div>
+      );
+    }
+
+    if (message.type === 'user_left') {
+      return (
+        <div key={index} className="text-center">
+          <div className="inline-block bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-3 py-1 rounded-full text-sm mb-2">
+            {message.username} left the room
+          </div>
+        </div>
+      );
+    }
+
+    if (message.type === 'message' && message.content) {
+      return (
+        <div
+          key={index}
+          className={`flex flex-col mb-4 ${
+            message.username === username ? 'items-end' : 'items-start'
+          }`}
+        >
+          <div
+            className={`max-w-[70%] py-1.5 px-3 rounded-lg ${
+              message.username === username
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-800'
+            }`}
+          >
+            <p className="text-sm">{message.content}</p>
+          </div>
+          <div
+            className={`text-xs mt-1 ${
+              message.username === username
+                ? 'text-gray-500 dark:text-gray-400 text-right'
+                : 'text-gray-500 dark:text-gray-400 text-left'
+            }`}
+          >
+            {message.username === username ? 'You' : message.username} at{' '}
+            {formatTime(message.timestamp)}
+          </div>
+        </div>
+      );
+    }
+  };
 
   return (
     <div className="flex grow h-[600px] max-w-4xl border rounded-lg overflow-hidden">
@@ -91,34 +170,7 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
         {/* This is the div that will hold your messages and allow them to scroll */}
         {/* It takes up all available space and applies its own vertical scrolling */}
         <div className="flex-1 overflow-y-auto p-4">
-          {messages.map((message, idx) => (
-            <div
-              key={idx}
-              className={`flex flex-col mb-4 ${
-                message.username === username ? 'items-end' : 'items-start'
-              }`}
-            >
-              <div
-                className={`max-w-[70%] p-3 rounded-lg ${
-                  message.username === username
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-200 text-gray-800'
-                }`}
-              >
-                <p className="text-sm">{message.content}</p>
-              </div>
-              <div
-                className={`text-xs mt-1 ${
-                  message.username === username
-                    ? 'text-gray-500 dark:text-gray-400 text-right'
-                    : 'text-gray-500 dark:text-gray-400 text-left'
-                }`}
-              >
-                {message.username === username ? 'You' : message.username} at{' '}
-                {formatTime(message.timestamp)}
-              </div>
-            </div>
-          ))}
+          {messages.map((message, idx) => renderMessage(message, idx))}
           <div ref={messagesEndRef}></div>
         </div>
         {/* Input area remains fixed at the bottom */}
@@ -142,10 +194,10 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
           Online Users
         </h3>
         <ScrollArea className="flex-1">
-          {onlineUsers.map((user) => (
-            <div key={user.id} className="flex items-center gap-3 mb-3">
+          {users.map((user) => (
+            <div key={user.userId} className="flex items-center gap-3 mb-3">
               <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                {user.name}
+                {user.username} {user.username === username ? '(You)' : ''}
               </span>
               <span className="h-2 w-2 rounded-full bg-green-500 ml-auto"></span>{' '}
               {/* Online indicator */}
