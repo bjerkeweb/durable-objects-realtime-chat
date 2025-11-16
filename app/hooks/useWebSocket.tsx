@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const useWebSocket = (room: string, handleMessage: (event: any) => void) => {
+  const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket>(null);
 
   useEffect(() => {
@@ -16,12 +17,18 @@ const useWebSocket = (room: string, handleMessage: (event: any) => void) => {
       };
 
       socket.onopen = () => {
+        setIsConnected(true);
         console.log('websocket opened');
+      };
+
+      socket.onclose = () => {
+        setIsConnected(false);
       };
     }
 
     return () => {
       if (socket) {
+        console.log('socket closing');
         socket.close();
       }
     };
@@ -33,7 +40,7 @@ const useWebSocket = (room: string, handleMessage: (event: any) => void) => {
     }
   };
 
-  return sendEvent;
+  return { sendEvent, isConnected };
 };
 
 export default useWebSocket;

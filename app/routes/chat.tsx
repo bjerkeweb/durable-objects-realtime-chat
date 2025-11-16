@@ -5,7 +5,6 @@ import { Input } from '~/components/ui/input';
 import { ScrollArea } from '~/components/ui/scroll-area';
 
 import type { Route } from './+types/chat';
-import { useParams } from 'react-router';
 
 type MessageType = 'message' | 'join' | 'leave';
 
@@ -14,7 +13,7 @@ interface Message {
   content?: string;
   timestamp: number;
   userId?: string;
-  userName?: string;
+  username?: string;
 }
 
 const formatTime = (timestamp: number) => {
@@ -27,12 +26,26 @@ export function loader({ params }: Route.LoaderArgs) {
 
 export default function Chat({ loaderData }: Route.ComponentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ username: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    // check for stored username
+    const storedUser = sessionStorage.getItem('chat-username');
+    if (storedUser) {
+      setCurrentUser({ username: storedUser });
+    }
+  }, []);
 
   const handleMessage = (e: Message) => {
     setMessages((prev) => [...prev, e]);
   };
 
-  const sendEvent = useWebSocket(loaderData.room, handleMessage);
+  const { sendEvent, isConnected } = useWebSocket(
+    loaderData.room,
+    handleMessage,
+  );
 
   const [inputMessage, setInputMessage] = useState('');
 
@@ -41,10 +54,11 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
       return;
     }
 
-    const message = {
+    const message: Message = {
       type: 'message',
       content: inputMessage.trim(),
       timestamp: Date.now(),
+      username: currentUser?.username,
     };
 
     sendEvent(message);
@@ -69,17 +83,35 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
     <div className="flex grow h-[600px] max-w-4xl border rounded-lg overflow-hidden">
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1">
-        <ScrollArea className="flex-1 p-4">
+        {/* Room Title Area */}
+        <div className="p-4 border-b flex justify-between">
+          <h2 className="text-lg font-semibold">#{loaderData.room}</h2>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-400 dark:text-gray-400">
+              {isConnected ? 'Online' : 'Disconnected'}
+            </span>
+            <div
+              className={`w-2 h-2 rounded-full ${
+                isConnected ? 'bg-green-500' : 'bg-red-500'
+              }`}
+            />
+          </div>
+        </div>
+        {/* This is the div that will hold your messages and allow them to scroll */}
+        {/* It takes up all available space and applies its own vertical scrolling */}
+        <div className="flex-1 overflow-y-auto p-4">
           {messages.map((message, idx) => (
             <div
               key={idx}
               className={`flex flex-col mb-4 ${
-                message.sender === 'user' ? 'items-end' : 'items-start'
+                message.username === currentUser?.username
+                  ? 'items-end'
+                  : 'items-start'
               }`}
             >
               <div
                 className={`max-w-[70%] p-3 rounded-lg ${
-                  message.sender === 'user'
+                  message.username === currentUser?.username
                     ? 'bg-blue-500 text-white'
                     : 'bg-gray-200 text-gray-800'
                 }`}
@@ -88,17 +120,20 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
               </div>
               <div
                 className={`text-xs mt-1 ${
-                  message.sender === 'user'
+                  message.username === currentUser?.username
                     ? 'text-gray-500 dark:text-gray-400 text-right'
                     : 'text-gray-500 dark:text-gray-400 text-left'
                 }`}
               >
-                {message.sender === 'user' ? 'You' : 'AI'} at{' '}
-                {formatTime(message.timestamp)}
+                {message.username === currentUser?.username
+                  ? 'You'
+                  : message.username}{' '}
+                at {formatTime(message.timestamp)}
               </div>
             </div>
           ))}
-        </ScrollArea>
+        </div>
+        {/* Input area remains fixed at the bottom */}
         <div className="flex p-4 border-t gap-2">
           <Input
             placeholder="Type your message..."
@@ -107,7 +142,9 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyPress}
           />
-          <Button onClick={sendMessage}>Send</Button>
+          <Button onClick={sendMessage} disabled={inputMessage.length === 0}>
+            Send
+          </Button>
         </div>
       </div>
 
