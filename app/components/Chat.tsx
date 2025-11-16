@@ -4,6 +4,7 @@ import { ScrollArea } from '~/components/ui/scroll-area';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { render } from 'hono/jsx/dom';
+import type { ServerMessage } from 'types/types';
 
 interface ChatProps {
   username: string;
@@ -33,7 +34,7 @@ const formatTime = (timestamp: number) => {
 
 const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ServerMessage[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
   console.log(messages);
@@ -42,7 +43,7 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleMessage = (msg: Message) => {
+  const handleMessage = (msg: ServerMessage) => {
     console.log('message', msg);
     if (msg.type === 'user_joined' || msg.type === 'user_left') {
       setUsers(msg.users || []);
@@ -78,14 +79,13 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
       return;
     }
 
-    const message: Message = {
+    sendEvent({
       type: 'message',
       content: inputMessage.trim(),
       timestamp: Date.now(),
       username,
-    };
-
-    sendEvent(message);
+      userId,
+    });
     setInputMessage('');
   };
 
@@ -96,7 +96,7 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
     }
   };
 
-  const renderMessage = (message: Message, index: number) => {
+  const renderMessage = (message: ServerMessage, index: number) => {
     if (message.type === 'user_joined') {
       return (
         <div key={index} className="text-center">

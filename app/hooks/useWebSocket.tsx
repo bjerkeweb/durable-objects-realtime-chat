@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ClientMessage } from 'types/types';
 
 interface Opts {
   room: string;
@@ -54,7 +55,7 @@ const useWebSocket = ({ room, handleMessage, onClose, onConnect }: Opts) => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
-  const sendEvent = (event: any) => {
+  const sendEvent = (event: ClientMessage) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(event));
     }

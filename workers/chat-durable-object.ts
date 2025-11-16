@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import type { ClientMessage } from 'types/types';
 
 interface UserSession {
   username: string;
@@ -57,15 +58,11 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     const messageString =
       typeof message === 'string' ? message : new TextDecoder().decode(message);
 
-    let messageData: Message;
+    let messageData: ClientMessage;
     try {
       messageData = JSON.parse(messageString);
     } catch {
-      messageData = {
-        type: 'message',
-        content: messageString,
-        timestamp: Date.now(),
-      };
+      throw new Error('message parse error');
     }
 
     // handle different message types
@@ -74,7 +71,6 @@ export class ChatWebSocketServer extends DurableObject<Env> {
         this.handleJoinRoom(ws, messageData);
         break;
       case 'leave':
-        console.log('leave');
         this.handleLeaveRoom(ws, messageData);
         break;
       case 'message':
@@ -92,6 +88,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       return;
     }
     const { username, userId } = session;
+    console.log('leave room', { username, userId });
 
     // remove session
     this.sessions.delete(ws);
@@ -107,9 +104,9 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.broadcastMessage(leaveMessage);
   }
 
-  private handleJoinRoom(ws: WebSocket, data: any) {
+  private handleJoinRoom(ws: WebSocket, data: ClientMessage) {
     const { username, userId } = data;
-    console.log({ username, userId });
+    console.log('join room', { username, userId });
 
     // store user session
     this.sessions.set(ws, {
