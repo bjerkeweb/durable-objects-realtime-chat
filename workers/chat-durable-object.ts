@@ -49,12 +49,13 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.broadcastMessage(ws, message);
   }
 
-  private broadcastMessage(ws: WebSocket, message: string | ArrayBuffer) {
-    for (const [socket, session] of this.sessions) {
-      if (ws !== socket) {
-        socket.send(
-          `[Durable Object] message: ${message}, from: ${session.id}`,
-        );
+  private broadcastMessage(
+    originatingWs: WebSocket,
+    message: string | ArrayBuffer,
+  ) {
+    for (const [ws, session] of this.sessions) {
+      if (originatingWs !== ws) {
+        ws.send(`[Durable Object] message: ${message}, from: ${session.id}`);
       }
     }
   }
