@@ -27,7 +27,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     const [client, server] = Object.values(webSocketPair);
 
     // calling this.ctx.acceptWebSocket() instead of ws.accept() informs the runtime
-    // that the socket is hibernatable and can be awoken/reconstrucred
+    // that the socket is hibernatable and can be reconstructed after sleep
     this.ctx.acceptWebSocket(server);
 
     // generate random ID
@@ -43,5 +43,24 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       status: 101,
       webSocket: client,
     });
+  }
+
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    this.broadcastMessage(ws, message);
+  }
+
+  private broadcastMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    for (const [socket, session] of this.sessions) {
+      if (ws !== socket) {
+        socket.send(
+          `[Durable Object] message: ${message}, from: ${session.id}`,
+        );
+      }
+    }
+  }
+
+  async webSocketClose(ws: WebSocket, code: number) {
+    this.sessions.delete(ws);
+    ws.close(code, 'Durable Object is closing WebSocket');
   }
 }
