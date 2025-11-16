@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 
-const useWebSocket = (handleMessage: (event: any) => void) => {
+const useWebSocket = (room: string, handleMessage: (event: any) => void) => {
   const socketRef = useRef<WebSocket>(null);
 
   useEffect(() => {
-    socketRef.current = new WebSocket(`ws://localhost:5173/api/ws`);
+    socketRef.current = new WebSocket(`ws://localhost:5173/api/ws/${room}`);
 
     const socket = socketRef.current;
 

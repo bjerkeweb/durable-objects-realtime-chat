@@ -5,6 +5,7 @@ import { Input } from '~/components/ui/input';
 import { ScrollArea } from '~/components/ui/scroll-area';
 
 import type { Route } from './+types/chat';
+import { useParams } from 'react-router';
 
 type MessageType = 'message' | 'join' | 'leave';
 
@@ -21,17 +22,17 @@ const formatTime = (timestamp: number) => {
 };
 
 export function loader({ params }: Route.LoaderArgs) {
-  console.log(params.room);
+  return { room: params.room ?? 'general' };
 }
 
-export default function Chat() {
+export default function Chat({ loaderData }: Route.ComponentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
 
   const handleMessage = (e: Message) => {
     setMessages((prev) => [...prev, e]);
   };
 
-  const sendEvent = useWebSocket(handleMessage);
+  const sendEvent = useWebSocket(loaderData.room, handleMessage);
 
   const [inputMessage, setInputMessage] = useState('');
 
