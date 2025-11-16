@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useWebSocket from '~/hooks/useWebSocket';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { ScrollArea } from '~/components/ui/scroll-area';
 
 import type { Route } from './+types/chat';
+import UsernamePrompt from '~/components/UsernamePrompt';
 
 type MessageType = 'message' | 'join' | 'leave';
 
@@ -20,32 +21,40 @@ const formatTime = (timestamp: number) => {
   return new Date(timestamp).toLocaleTimeString();
 };
 
-export function loader({ params }: Route.LoaderArgs) {
-  return { room: params.room ?? 'general' };
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const username = formData.get('username');
+
+  sessionStorage.setItem('chat-username', String(username));
+
+  return { username };
 }
 
-export default function Chat({ loaderData }: Route.ComponentProps) {
+export default function Chat({ params, actionData }: Route.ComponentProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentUser, setCurrentUser] = useState<{ username: string } | null>(
-    null,
-  );
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    userId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   useEffect(() => {
     // check for stored username
     const storedUser = sessionStorage.getItem('chat-username');
     if (storedUser) {
-      setCurrentUser({ username: storedUser });
+      setCurrentUser({ username: storedUser, userId: crypto.randomUUID() });
     }
-  }, []);
+  }, [actionData?.username]);
 
   const handleMessage = (e: Message) => {
     setMessages((prev) => [...prev, e]);
   };
 
-  const { sendEvent, isConnected } = useWebSocket(
-    loaderData.room,
-    handleMessage,
-  );
+  const { sendEvent, isConnected } = useWebSocket(params.room, handleMessage);
 
   const [inputMessage, setInputMessage] = useState('');
 
@@ -79,13 +88,17 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
     { id: 'u4', name: 'Diana', avatar: '/avatars/diana.jpg' },
   ];
 
+  if (!currentUser) {
+    return <UsernamePrompt roomName={params.room} />;
+  }
+
   return (
     <div className="flex grow h-[600px] max-w-4xl border rounded-lg overflow-hidden">
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1">
         {/* Room Title Area */}
         <div className="p-4 border-b flex justify-between">
-          <h2 className="text-lg font-semibold">#{loaderData.room}</h2>
+          <h2 className="text-lg font-semibold">#{params.room}</h2>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-400 dark:text-gray-400">
               {isConnected ? 'Online' : 'Disconnected'}
@@ -132,6 +145,7 @@ export default function Chat({ loaderData }: Route.ComponentProps) {
               </div>
             </div>
           ))}
+          <div ref={messagesEndRef}></div>
         </div>
         {/* Input area remains fixed at the bottom */}
         <div className="flex p-4 border-t gap-2">
