@@ -7,16 +7,6 @@ interface UserSession {
   joinedAt: number;
 }
 
-type MessageType = 'message' | 'join' | 'leave';
-
-interface Message {
-  type: MessageType;
-  content?: string;
-  timestamp: number;
-  userId?: string;
-  userName?: string;
-}
-
 export class ChatWebSocketServer extends DurableObject<Env> {
   sessions: Map<WebSocket, UserSession>;
 
