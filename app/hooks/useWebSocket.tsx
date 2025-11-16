@@ -12,8 +12,7 @@ const useWebSocket = (handleMessage: (event: any) => void) => {
 
     if (socket) {
       socket.onmessage = (e) => {
-        // handleMessage(JSON.parse(e.data));
-        console.log(e.data);
+        handleMessage(JSON.parse(e.data));
       };
 
       socket.onopen = () => {

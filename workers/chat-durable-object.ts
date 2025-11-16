@@ -1,5 +1,15 @@
 import { DurableObject } from 'cloudflare:workers';
 
+type MessageType = 'message' | 'join' | 'leave';
+
+interface Message {
+  type: MessageType;
+  content?: string;
+  timestamp: number;
+  userId?: string;
+  userName?: string;
+}
+
 export class ChatWebSocketServer extends DurableObject<Env> {
   sessions: Map<WebSocket, { [key: string]: string }>;
 
@@ -46,7 +56,31 @@ export class ChatWebSocketServer extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-    this.broadcastMessage(ws, message);
+    // Convert ArrayBuffer to string if necessary
+    const messageString =
+      typeof message === 'string' ? message : new TextDecoder().decode(message);
+
+    let messageData: Message;
+    try {
+      messageData = JSON.parse(messageString);
+    } catch {
+      messageData = {
+        type: 'message',
+        content: messageString,
+        timestamp: Date.now(),
+      };
+    }
+
+    // handle different message types
+    switch (messageData.type) {
+      case 'message':
+        console.log('broadcast');
+        this.broadcastMessage(ws, message);
+        return;
+      default:
+        console.log('default');
+        return;
+    }
   }
 
   private broadcastMessage(
@@ -54,9 +88,10 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     message: string | ArrayBuffer,
   ) {
     for (const [ws, session] of this.sessions) {
-      if (originatingWs !== ws) {
-        ws.send(`[Durable Object] message: ${message}, from: ${session.id}`);
-      }
+      // if (originatingWs !== ws) {
+      //   ws.send(message);
+      // }
+      ws.send(message);
     }
   }
 

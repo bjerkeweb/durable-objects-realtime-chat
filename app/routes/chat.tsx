@@ -4,33 +4,30 @@ import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { ScrollArea } from '~/components/ui/scroll-area';
 
+type MessageType = 'message' | 'join' | 'leave';
+
+interface Message {
+  type: MessageType;
+  content?: string;
+  timestamp: number;
+  userId?: string;
+  userName?: string;
+}
+
+const formatTime = (timestamp: number) => {
+  return new Date(timestamp).toLocaleTimeString();
+};
+
 export default function Chat() {
-  const handleMessage = (e) => console.log(e);
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  const handleMessage = (e: Message) => {
+    setMessages((prev) => [...prev, e]);
+  };
 
   const sendEvent = useWebSocket(handleMessage);
 
   const [inputMessage, setInputMessage] = useState('');
-
-  const messages = [
-    {
-      id: '1',
-      sender: 'user',
-      content: 'Hey, how are you?',
-      timestamp: '10:00 AM',
-    },
-    {
-      id: '2',
-      sender: 'ai',
-      content: "I'm doing great! How can I help you today?",
-      timestamp: '10:01 AM',
-    },
-    {
-      id: '3',
-      sender: 'user',
-      content: "I'm looking for a simple chat UI.",
-      timestamp: '10:02 AM',
-    },
-  ];
 
   const sendMessage = () => {
     if (!inputMessage.trim()) {
@@ -43,7 +40,7 @@ export default function Chat() {
       timestamp: Date.now(),
     };
 
-    sendEvent(JSON.stringify(message));
+    sendEvent(message);
     setInputMessage('');
   };
 
@@ -67,9 +64,9 @@ export default function Chat() {
         {/* Main Chat Area */}
         <div className="flex flex-col flex-1">
           <ScrollArea className="flex-1 p-4">
-            {messages.map((message) => (
+            {messages.map((message, idx) => (
               <div
-                key={message.id}
+                key={idx}
                 className={`flex flex-col mb-4 ${
                   message.sender === 'user' ? 'items-end' : 'items-start'
                 }`}
@@ -91,7 +88,7 @@ export default function Chat() {
                   }`}
                 >
                   {message.sender === 'user' ? 'You' : 'AI'} at{' '}
-                  {message.timestamp}
+                  {formatTime(message.timestamp)}
                 </div>
               </div>
             ))}
