@@ -7,7 +7,7 @@ interface UserSession {
   joinedAt: number;
 }
 
-const MAX_MESSAGES = 100;
+const MAX_MESSAGES = 20;
 const MESSAGE_STORAGE_PREFIX = 'message_';
 
 export class ChatWebSocketServer extends DurableObject<Env> {
