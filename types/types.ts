@@ -16,7 +16,7 @@ interface UserJoined extends BaseServerEvent {
   users: UserSession[];
 }
 
-interface UserLeft extends BaseServerEvent {
+export interface UserLeft extends BaseServerEvent {
   type: 'user_left';
   userId: string;
   username: string;

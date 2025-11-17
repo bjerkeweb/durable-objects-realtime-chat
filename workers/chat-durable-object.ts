@@ -6,6 +6,7 @@ import type {
   RecentMessages,
   ServerMessage,
   ServerUserMessage,
+  UserLeft,
 } from 'types/types';
 
 interface UserSession {
@@ -20,10 +21,15 @@ const MESSAGE_STORAGE_PREFIX = 'message_';
 export class ChatWebSocketServer extends DurableObject<Env> {
   private sessions: Map<WebSocket, UserSession>;
   private recentMessages: ServerUserMessage[] = []; // store recent messages in memory
+  private alarmPeriod: number;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sessions = new Map();
+
+    this.alarmPeriod = 24 * 60 * 60 * 1000; // 24 hours
+
+    this.ensureAlarmScheduled();
 
     // wake up any hibernating WebSockets and place them back in sessions Map
     this.ctx.getWebSockets().forEach((ws) => {
@@ -41,6 +47,28 @@ export class ChatWebSocketServer extends DurableObject<Env> {
 
     // fetch recent messages when on wake up
     this.initializeRecentMessages();
+  }
+
+  private async ensureAlarmScheduled() {
+    const currentAlarm = this.ctx.storage.getAlarm();
+    if (currentAlarm !== null) {
+      await this.ctx.storage.setAlarm(Date.now() + this.alarmPeriod);
+      console.log('initial alarm scheduled');
+    }
+  }
+
+  async alarm() {
+    console.log('alarm fired, deleting old storage');
+
+    const allKeys = await this.ctx.storage.list();
+    for (const [key, value] of allKeys) {
+      await this.ctx.storage.delete(key);
+      console.log('deleted msg', value);
+    }
+
+    // After deletion, reschedule the alarm for the next period
+    await this.ctx.storage.setAlarm(Date.now() + this.alarmPeriod);
+    console.log('Next alarm scheduled.');
   }
 
   private async initializeRecentMessages() {
@@ -118,7 +146,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     // remove session
     this.sessions.delete(ws);
 
-    const leaveMessage = {
+    const leaveMessage: UserLeft = {
       type: 'user_left',
       username,
       userId,
