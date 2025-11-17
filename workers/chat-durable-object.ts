@@ -1,5 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { ClientMessage } from 'types/types';
+import type {
+  ClientLeave,
+  ClientMessage,
+  ClientSendMessage,
+  RecentMessages,
+  ServerMessage,
+  ServerUserMessage,
+} from 'types/types';
 
 interface UserSession {
   username: string;
@@ -12,7 +19,7 @@ const MESSAGE_STORAGE_PREFIX = 'message_';
 
 export class ChatWebSocketServer extends DurableObject<Env> {
   private sessions: Map<WebSocket, UserSession>;
-  private recentMessages: ClientMessage[] = []; // store recent messages in memory
+  private recentMessages: ServerUserMessage[] = []; // store recent messages in memory
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -44,9 +51,9 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       reverse: true, // get most recent first
     });
 
-    const messages: ClientMessage[] = [];
+    const messages: ServerUserMessage[] = [];
     for (const [key, value] of messageKeys) {
-      messages.push(value as ClientMessage);
+      messages.push(value as ServerUserMessage);
     }
 
     // sort by timestamp in ascending order to have oldest first
@@ -100,7 +107,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     }
   }
 
-  private handleLeaveRoom(ws: WebSocket, data: any) {
+  private handleLeaveRoom(ws: WebSocket, data: ClientLeave) {
     const session = this.sessions.get(ws);
     if (!session) {
       return;
@@ -141,15 +148,15 @@ export class ChatWebSocketServer extends DurableObject<Env> {
 
     // send recent messages to newly joined client
     if (this.recentMessages.length > 0) {
-      ws.send(
-        JSON.stringify({
-          type: 'recent_messages',
-          messages: this.recentMessages,
-        }),
-      );
+      const recentMessagesEvent: RecentMessages = {
+        type: 'recent_messages',
+        timestamp: Date.now(),
+        messages: this.recentMessages,
+      };
+      ws.send(JSON.stringify(recentMessagesEvent));
     }
-
-    const joinMessage = {
+    ``;
+    const joinMessage: ServerMessage = {
       type: 'user_joined',
       username,
       userId,
@@ -161,16 +168,20 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.broadcastMessage(joinMessage);
   }
 
-  private async storeAndBroadCastMessage(message: ClientMessage) {
-    const storedMessage: ClientMessage = {
-      ...message,
-      messageId: crypto.randomUUID(),
+  private async storeAndBroadCastMessage(clientMessage: ClientSendMessage) {
+    const storedMessage: ServerUserMessage = {
+      type: 'message',
+      userId: clientMessage.userId,
+      username: clientMessage.username,
+      content: clientMessage.content,
+      timestamp: Date.now(),
     };
 
     // Store the message in Durable Object storage
     // We'll use a prefix + timestamp + messageId for the key to allow
     // efficient listing of recent messages.
-    const storageKey = `${MESSAGE_STORAGE_PREFIX}${storedMessage.timestamp}_${storedMessage.messageId}`;
+    const messageId = clientMessage.messageId || crypto.randomUUID();
+    const storageKey = `${MESSAGE_STORAGE_PREFIX}${storedMessage.timestamp}_${messageId}`;
     await this.ctx.storage.put(storageKey, storedMessage);
 
     // Update the in-memory recent messages
@@ -188,7 +199,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.broadcastMessage(storedMessage);
   }
 
-  private broadcastMessage(message: any) {
+  private broadcastMessage(message: ServerMessage) {
     for (const [ws] of this.sessions) {
       try {
         ws.send(JSON.stringify(message));

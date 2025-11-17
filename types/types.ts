@@ -7,34 +7,38 @@ interface UserSession {
 
 interface BaseServerEvent {
   timestamp: number;
-  userId: string;
-  username: string;
 }
 
 interface UserJoined extends BaseServerEvent {
   type: 'user_joined';
+  userId: string;
+  username: string;
   users: UserSession[];
 }
 
 interface UserLeft extends BaseServerEvent {
   type: 'user_left';
+  userId: string;
+  username: string;
   users: UserSession[];
 }
 
-interface UserMessage extends BaseServerEvent {
+export interface ServerUserMessage extends BaseServerEvent {
   type: 'message';
-  content?: string;
+  content: string;
+  userId: string;
+  username: string;
 }
 
-interface RecentMessages extends BaseServerEvent {
+export interface RecentMessages extends BaseServerEvent {
   type: 'recent_messages';
-  messages: ServerMessage[];
+  messages: ServerUserMessage[];
 }
 
 export type ServerMessage =
   | UserJoined
   | UserLeft
-  | UserMessage
+  | ServerUserMessage
   | RecentMessages;
 
 // client messages
@@ -49,11 +53,11 @@ interface ClientJoin extends BaseClientEvent {
   type: 'join';
 }
 
-interface ClientLeave extends BaseClientEvent {
+export interface ClientLeave extends BaseClientEvent {
   type: 'leave';
 }
 
-interface ClientSendMessage extends BaseClientEvent {
+export interface ClientSendMessage extends BaseClientEvent {
   type: 'message';
   content: string;
 }
