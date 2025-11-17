@@ -7,8 +7,12 @@ interface UserSession {
   joinedAt: number;
 }
 
+const MAX_MESSAGES = 100;
+const MESSAGE_STORAGE_PREFIX = 'message_';
+
 export class ChatWebSocketServer extends DurableObject<Env> {
-  sessions: Map<WebSocket, UserSession>;
+  private sessions: Map<WebSocket, UserSession>;
+  private recentMessages: ClientMessage[] = []; // store recent messages in memory
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -27,6 +31,30 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.ctx.setWebSocketAutoResponse(
       new WebSocketRequestResponsePair('ping', 'pong'),
     );
+
+    // fetch recent messages when on wake up
+    this.initializeRecentMessages();
+  }
+
+  private async initializeRecentMessages() {
+    // get all keys that start with our message prefix
+    const messageKeys = await this.ctx.storage.list({
+      prefix: MESSAGE_STORAGE_PREFIX,
+      limit: MAX_MESSAGES,
+      reverse: true, // get most recent first
+    });
+
+    const messages: ClientMessage[] = [];
+    for (const [key, value] of messageKeys) {
+      messages.push(value as ClientMessage);
+    }
+
+    // sort by timestamp in ascending order to have oldest first
+    this.recentMessages = messages.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Send the recent messages to any new client connecting
+    // This part will be handled when a client connects in `handleJoinRoom`
+    // to ensure the messages are sent to the correct client.
   }
 
   async fetch(): Promise<Response> {
@@ -58,13 +86,13 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     // handle different message types
     switch (messageData.type) {
       case 'join':
-        this.handleJoinRoom(ws, messageData);
+        await this.handleJoinRoom(ws, messageData);
         break;
       case 'leave':
         this.handleLeaveRoom(ws, messageData);
         break;
       case 'message':
-        this.broadcastMessage(messageData);
+        this.storeAndBroadCastMessage(messageData);
         break;
       default:
         console.log('default');
@@ -94,7 +122,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.broadcastMessage(leaveMessage);
   }
 
-  private handleJoinRoom(ws: WebSocket, data: ClientMessage) {
+  private async handleJoinRoom(ws: WebSocket, data: ClientMessage) {
     const { username, userId } = data;
     console.log('join room', { username, userId });
 
@@ -111,6 +139,16 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       joinedAt: Date.now(),
     });
 
+    // send recent messages to newly joined client
+    if (this.recentMessages.length > 0) {
+      ws.send(
+        JSON.stringify({
+          type: 'recent_messages',
+          messages: this.recentMessages,
+        }),
+      );
+    }
+
     const joinMessage = {
       type: 'user_joined',
       username,
@@ -121,6 +159,33 @@ export class ChatWebSocketServer extends DurableObject<Env> {
 
     // notify all users that someone joined
     this.broadcastMessage(joinMessage);
+  }
+
+  private async storeAndBroadCastMessage(message: ClientMessage) {
+    const storedMessage: ClientMessage = {
+      ...message,
+      messageId: crypto.randomUUID(),
+    };
+
+    // Store the message in Durable Object storage
+    // We'll use a prefix + timestamp + messageId for the key to allow
+    // efficient listing of recent messages.
+    const storageKey = `${MESSAGE_STORAGE_PREFIX}${storedMessage.timestamp}_${storedMessage.messageId}`;
+    await this.ctx.storage.put(storageKey, storedMessage);
+
+    // Update the in-memory recent messages
+    this.recentMessages.push(storedMessage);
+    if (this.recentMessages.length > MAX_MESSAGES) {
+      // Remove the oldest message from memory
+      this.recentMessages.shift();
+
+      // Optionally, you could also clean up older messages from storage here
+      // This is more complex as you'd need to identify and delete the oldest key.
+      // For now, let's just keep the in-memory array capped.
+    }
+
+    // Broadcast the message to all connected clients
+    this.broadcastMessage(storedMessage);
   }
 
   private broadcastMessage(message: any) {

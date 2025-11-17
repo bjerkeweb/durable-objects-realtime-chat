@@ -44,7 +44,11 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
   }, [messages]);
 
   const handleMessage = (msg: ServerMessage) => {
-    console.log('message', msg);
+    if (msg.type === 'recent_messages') {
+      setMessages((prev) => [...prev, ...msg.messages]);
+      return;
+    }
+
     if (msg.type === 'user_joined' || msg.type === 'user_left') {
       setUsers(msg.users || []);
     }
@@ -101,7 +105,8 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
       return (
         <div key={index} className="text-center">
           <div className="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-sm mb-2">
-            {message.username} joined the room
+            {message.userId === userId ? 'You' : message.username} joined the
+            room
           </div>
         </div>
       );
@@ -155,7 +160,10 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
       <div className="flex flex-col flex-1">
         {/* Room Title Area */}
         <div className="p-4 border-b flex justify-between">
-          <h2 className="text-lg font-semibold">#{roomName}</h2>
+          <div className="flex flex-col">
+            <h2 className="text-lg font-semibold">#{roomName}</h2>
+            <span className="text-xs">{users.length} users online</span>
+          </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-400 dark:text-gray-400">
               {isConnected ? 'Online' : 'Disconnected'}
@@ -191,7 +199,7 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
       {/* Online Users Sidebar */}
       <div className="w-64 border-l bg-gray-100 dark:bg-gray-800 p-4 flex flex-col">
         <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-50">
-          Online Users
+          Users
         </h3>
         <ScrollArea className="flex-1">
           {users.map((user) => (

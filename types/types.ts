@@ -26,13 +26,23 @@ interface UserMessage extends BaseServerEvent {
   content?: string;
 }
 
-export type ServerMessage = UserJoined | UserLeft | UserMessage;
+interface RecentMessages extends BaseServerEvent {
+  type: 'recent_messages';
+  messages: ServerMessage[];
+}
+
+export type ServerMessage =
+  | UserJoined
+  | UserLeft
+  | UserMessage
+  | RecentMessages;
 
 // client messages
 interface BaseClientEvent {
   username: string;
   userId: string;
   timestamp: number;
+  messageId?: string;
 }
 
 interface ClientJoin extends BaseClientEvent {
