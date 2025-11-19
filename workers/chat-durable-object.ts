@@ -28,6 +28,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.sessions = new Map();
 
     this.alarmPeriod = 24 * 60 * 60 * 1000; // 24 hours
+    // this.alarmPeriod = 5 * 1000;
 
     this.ensureAlarmScheduled();
 
@@ -51,7 +52,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
 
   private async ensureAlarmScheduled() {
     const currentAlarm = this.ctx.storage.getAlarm();
-    if (currentAlarm !== null) {
+    if (currentAlarm !== null || currentAlarm < Date.now()) {
       await this.ctx.storage.setAlarm(Date.now() + this.alarmPeriod);
       console.log('initial alarm scheduled');
     }
@@ -65,6 +66,10 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       await this.ctx.storage.delete(key);
       console.log('deleted msg', value);
     }
+
+    // clear in memory storage
+    this.recentMessages = [];
+    console.log('in-memory cache cleared');
 
     // After deletion, reschedule the alarm for the next period
     await this.ctx.storage.setAlarm(Date.now() + this.alarmPeriod);
@@ -228,11 +233,14 @@ export class ChatWebSocketServer extends DurableObject<Env> {
   }
 
   private broadcastMessage(message: ServerMessage) {
-    for (const [ws] of this.sessions) {
+    for (const [ws, session] of this.sessions) {
       try {
         ws.send(JSON.stringify(message));
       } catch (e) {
-        console.error('failed to send message to socket', e);
+        console.error(
+          `failed to send message to socket for user ${session.userId || 'unknown'}`,
+          e,
+        );
         this.sessions.delete(ws);
       }
     }
