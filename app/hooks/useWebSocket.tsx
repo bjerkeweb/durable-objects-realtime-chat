@@ -13,8 +13,9 @@ const useWebSocket = ({ room, handleMessage, onClose, onConnect }: Opts) => {
   const socketRef = useRef<WebSocket>(null);
 
   useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     socketRef.current = new WebSocket(
-      `ws://${window.location.host}/api/ws/${room}`,
+      `${protocol}://${window.location.host}/api/ws/${room}`,
     );
 
     const socket = socketRef.current;
