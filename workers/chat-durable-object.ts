@@ -31,11 +31,13 @@ export class ChatWebSocketServer extends DurableObject<Env> {
   private recentMessages: ServerUserMessage[] = []; // store recent messages in memory
   private alarmPeriod: number;
   private typingUsers: Map<string, TypingStatus>;
+  private activeUsernames: Set<string>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sessions = new Map();
     this.typingUsers = new Map();
+    this.activeUsernames = new Set();
 
     this.alarmPeriod = 24 * 60 * 60 * 1000; // 24 hours
     // this.alarmPeriod = 5 * 1000;
@@ -48,6 +50,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       const attachment = ws.deserializeAttachment();
       if (attachment) {
         this.sessions.set(ws, { ...attachment });
+        this.activeUsernames.add(attachment.username);
       }
     });
 
@@ -133,7 +136,19 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     // to ensure the messages are sent to the correct client.
   }
 
-  async fetch(): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === '/check-username' && request.method === 'GET') {
+      const username = url.searchParams.get('username');
+      if (!username) {
+        return new Response('Missing username param', { status: 400 });
+      }
+      const exists = this.checkUsernameExists(username);
+      return new Response(JSON.stringify({ exists }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const webSocketPair = new WebSocketPair();
     const [client, server] = Object.values(webSocketPair);
 
@@ -145,6 +160,9 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       status: 101,
       webSocket: client,
     });
+  }
+  private checkUsernameExists(username: string) {
+    return this.activeUsernames.has(username);
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
@@ -218,6 +236,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
 
     // remove session
     this.sessions.delete(ws);
+    this.activeUsernames.delete(username);
 
     const leaveMessage: UserLeft = {
       type: 'user_left',
@@ -240,6 +259,8 @@ export class ChatWebSocketServer extends DurableObject<Env> {
       userId,
       joinedAt: Date.now(),
     });
+
+    this.activeUsernames.add(username);
 
     ws.serializeAttachment({
       username,
@@ -338,6 +359,7 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     const session = this.sessions.get(ws);
     if (session) {
       this.sessions.delete(ws);
+      this.activeUsernames.delete(session.username);
       if (this.typingUsers.has(session.userId)) {
         this.typingUsers.delete(session.userId);
         this.broadcastTypingStatus();

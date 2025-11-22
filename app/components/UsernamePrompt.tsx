@@ -10,10 +10,15 @@ import {
 } from '~/components/ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
+import { useRef } from 'react';
 
-const UsernamePrompt: React.FC<{ roomName: string }> = ({ roomName }) => {
+const UsernamePrompt: React.FC<{ roomName: string; hasError: boolean }> = ({
+  roomName,
+  hasError,
+}) => {
+  const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <Form method="post">
+    <Form method="post" onSubmit={() => inputRef.current?.blur()}>
       <Card className="w-[350px]">
         <CardHeader>
           <CardTitle>Join #{roomName}</CardTitle>
@@ -26,10 +31,17 @@ const UsernamePrompt: React.FC<{ roomName: string }> = ({ roomName }) => {
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="username">Username</Label>
               <Input
+                ref={inputRef}
                 id="username"
                 name="username"
                 placeholder="Your username"
+                className={hasError ? 'border-destructive' : ''}
               />
+              {hasError && (
+                <p className="text-xs text-destructive">
+                  Username already taken
+                </p>
+              )}
             </div>
           </div>
         </CardContent>

@@ -3,10 +3,27 @@ import Chat from '~/components/Chat';
 
 import type { Route } from './+types/room';
 import UsernamePrompt from '~/components/UsernamePrompt';
+import type { UsernameCheckResponse } from './join';
 
-export async function clientAction({ request }: Route.ClientActionArgs) {
+export async function clientAction({
+  request,
+  params,
+}: Route.ClientActionArgs) {
   const formData = await request.formData();
   const username = formData.get('username');
+  const room = params.room;
+
+  const response = await fetch(
+    `/api/${room}/check-username?username=${username}`,
+    {
+      method: 'GET',
+    },
+  );
+  const json = (await response.json()) as UsernameCheckResponse;
+
+  if (json.exists) {
+    return { error: true };
+  }
 
   const user = {
     username: String(username),
@@ -25,9 +42,15 @@ export function clientLoader() {
   return { user: undefined };
 }
 
-export default function Room({ params, loaderData }: Route.ComponentProps) {
+export default function Room({
+  params,
+  loaderData,
+  actionData,
+}: Route.ComponentProps) {
   if (!loaderData.user) {
-    return <UsernamePrompt roomName={params.room} />;
+    return (
+      <UsernamePrompt hasError={!!actionData?.error} roomName={params.room} />
+    );
   }
 
   return (
