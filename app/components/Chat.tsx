@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import useWebSocket from '~/hooks/useWebSocket';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
-import { render } from 'hono/jsx/dom';
 import type { ServerMessage } from 'types/types';
 
 interface ChatProps {
@@ -26,23 +25,34 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ServerMessage[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleMessage = (msg: ServerMessage) => {
-    if (msg.type === 'recent_messages') {
-      setMessages((prev) => [...prev, ...msg.messages]);
-      return;
-    }
+  const handleMessage = useCallback(
+    (msg: ServerMessage) => {
+      if (msg.type === 'recent_messages') {
+        setMessages((prev) => [...prev, ...msg.messages]);
+        return;
+      }
 
-    if (msg.type === 'user_joined' || msg.type === 'user_left') {
-      setUsers(msg.users || []);
-    }
+      if (msg.type === 'user_joined' || msg.type === 'user_left') {
+        setUsers(msg.users || []);
+      }
 
-    setMessages((prev) => [...prev, msg]);
-  };
+      if (msg.type === 'typing_update') {
+        setTypingUsers(msg.usersTyping.filter((u) => u !== username));
+        return;
+      }
+
+      setMessages((prev) => [...prev, msg]);
+    },
+    [username],
+  );
 
   const { sendEvent, isConnected } = useWebSocket({
     room: roomName,
@@ -61,10 +71,53 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
         userId,
         timestamp: Date.now(),
       });
+      if (isTypingRef.current) {
+        sendEvent({
+          type: 'stopped_typing',
+          username,
+          userId,
+          timestamp: Date.now(),
+        });
+        isTypingRef.current = false;
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
+      }
     },
   });
 
   const [inputMessage, setInputMessage] = useState('');
+
+  const sendTypingEvent = useCallback(() => {
+    if (!isConnected) {
+      return;
+    }
+    if (!isTypingRef.current) {
+      sendEvent({
+        type: 'typing',
+        username,
+        userId,
+        timestamp: Date.now(),
+      });
+      isTypingRef.current = true;
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // if user stops typing for 2 seconds, send stopped_typing
+    typingTimeoutRef.current = setTimeout(() => {
+      sendEvent({
+        type: 'stopped_typing',
+        username,
+        userId,
+        timestamp: Date.now(),
+      });
+      isTypingRef.current = false;
+    }, 2000);
+  }, [isConnected, username, userId, sendEvent]);
 
   const sendMessage = () => {
     if (!inputMessage.trim()) {
@@ -79,16 +132,40 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
       userId,
     });
     setInputMessage('');
+
+    if (isTypingRef.current) {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      sendEvent({
+        type: 'stopped_typing',
+        username,
+        userId,
+        timestamp: Date.now(),
+      });
+      isTypingRef.current = false;
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
+    sendTypingEvent();
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputMessage(e.target.value);
+    sendTypingEvent();
+  };
+
   const renderMessage = (message: ServerMessage, index: number) => {
+    if (message.type === 'typing_update') {
+      return null;
+    }
     if (message.type === 'user_joined') {
       return (
         <div key={index} className="text-center">
@@ -142,6 +219,25 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
     }
   };
 
+  const renderTypingIndicator = () => {
+    if (typingUsers.length === 0) {
+      return null;
+    }
+
+    const typingText =
+      typingUsers.length === 1
+        ? `${typingUsers[0]} is typing...`
+        : `${typingUsers.slice(0, -1).join(', ')} and ${
+            typingUsers[typingUsers.length - 1]
+          } are typing...`;
+
+    return (
+      <div className="p-2 pl-5 text-xs text-gray-500 dark:text-gray-400 italic">
+        {typingText}
+      </div>
+    );
+  };
+
   return (
     <div className="flex grow h-[600px] max-w-4xl border rounded-lg overflow-hidden">
       {/* Main Chat Area */}
@@ -169,13 +265,16 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
           {messages.map((message, idx) => renderMessage(message, idx))}
           <div ref={messagesEndRef}></div>
         </div>
+
+        {renderTypingIndicator()}
+
         {/* Input area remains fixed at the bottom */}
         <div className="flex p-4 border-t gap-2">
           <Input
             placeholder="Type your message..."
             className="flex-1"
             value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyPress}
           />
           <Button onClick={sendMessage} disabled={inputMessage.length === 0}>
