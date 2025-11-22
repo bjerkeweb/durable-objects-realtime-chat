@@ -65,14 +65,6 @@ export default function Join({ actionData }: Route.ComponentProps) {
                 id="username"
                 name="username"
                 placeholder="Your username"
-              />
-            </div>
-            <div className="flex flex-col space-y-1.5">
-              <Label htmlFor="roomName">Room Name</Label>
-              <Input
-                id="roomName"
-                name="room"
-                placeholder="Name of the room"
                 className={actionData?.error ? 'border-destructive' : ''}
               />
               {actionData?.error && (
@@ -80,6 +72,10 @@ export default function Join({ actionData }: Route.ComponentProps) {
                   Username already taken
                 </p>
               )}
+            </div>
+            <div className="flex flex-col space-y-1.5">
+              <Label htmlFor="roomName">Room Name</Label>
+              <Input id="roomName" name="room" placeholder="Name of the room" />
             </div>
           </div>
         </CardContent>
