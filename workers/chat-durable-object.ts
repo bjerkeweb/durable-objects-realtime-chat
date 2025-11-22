@@ -3,9 +3,11 @@ import type {
   ClientLeave,
   ClientMessage,
   ClientSendMessage,
+  ClientTyping,
   RecentMessages,
   ServerMessage,
   ServerUserMessage,
+  ServerTypingUpdate,
   UserLeft,
 } from 'types/types';
 
@@ -15,6 +17,12 @@ interface UserSession {
   joinedAt: number;
 }
 
+interface TypingStatus {
+  username: string;
+  timestamp: number;
+}
+
+const TYPING_TIMEOUT_MS = 5000;
 const MAX_MESSAGES = 20;
 const MESSAGE_STORAGE_PREFIX = 'message_';
 
@@ -22,10 +30,12 @@ export class ChatWebSocketServer extends DurableObject<Env> {
   private sessions: Map<WebSocket, UserSession>;
   private recentMessages: ServerUserMessage[] = []; // store recent messages in memory
   private alarmPeriod: number;
+  private typingUsers: Map<string, TypingStatus>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sessions = new Map();
+    this.typingUsers = new Map();
 
     this.alarmPeriod = 24 * 60 * 60 * 1000; // 24 hours
     // this.alarmPeriod = 5 * 1000;
@@ -71,9 +81,35 @@ export class ChatWebSocketServer extends DurableObject<Env> {
     this.recentMessages = [];
     console.log('in-memory cache cleared');
 
+    // clean up any old typing statuses
+    let typingStatusChanged = false;
+    const now = Date.now();
+    for (const [userId, status] of this.typingUsers.entries()) {
+      if (now - status.timestamp > TYPING_TIMEOUT_MS) {
+        this.typingUsers.delete(userId);
+        typingStatusChanged = true;
+      }
+    }
+    if (typingStatusChanged) {
+      this.broadcastTypingStatus();
+    }
+
     // After deletion, reschedule the alarm for the next period
     await this.ctx.storage.setAlarm(Date.now() + this.alarmPeriod);
     console.log('Next alarm scheduled.');
+  }
+  private broadcastTypingStatus() {
+    const typingUsernames = Array.from(this.typingUsers.values()).map(
+      (status) => status.username,
+    );
+
+    const typingUpdate: ServerTypingUpdate = {
+      type: 'typing_update',
+      usersTyping: typingUsernames,
+      timestamp: Date.now(),
+    };
+
+    this.broadcastMessage(typingUpdate);
   }
 
   private async initializeRecentMessages() {
@@ -132,11 +168,43 @@ export class ChatWebSocketServer extends DurableObject<Env> {
         this.handleLeaveRoom(ws, messageData);
         break;
       case 'message':
-        this.storeAndBroadCastMessage(messageData);
+        await this.storeAndBroadCastMessage(messageData);
+        // if user sent a message, they are no longer typing
+        if (this.typingUsers.has(messageData.userId)) {
+          this.typingUsers.delete(messageData.userId);
+          this.broadcastTypingStatus();
+        }
+        break;
+      case 'typing':
+        this.handleTyping(messageData);
+        break;
+      case 'stopped_typing':
+        this.handleStoppedTyping(messageData);
         break;
       default:
         console.log('default');
         return;
+    }
+  }
+  private handleTyping(message: ClientTyping) {
+    const { userId, username } = message;
+    const now = Date.now();
+    const existingStatus = this.typingUsers.get(userId);
+
+    if (
+      !existingStatus ||
+      now - existingStatus.timestamp > TYPING_TIMEOUT_MS / 2
+      // don't rebroadcast status of already typing user more than once every 2.5 sec
+    ) {
+      this.typingUsers.set(userId, { username, timestamp: now });
+      this.broadcastTypingStatus();
+    }
+  }
+
+  private handleStoppedTyping(message: ClientTyping) {
+    const { userId } = message;
+    if (this.typingUsers.delete(userId)) {
+      this.broadcastTypingStatus();
     }
   }
 
@@ -199,6 +267,26 @@ export class ChatWebSocketServer extends DurableObject<Env> {
 
     // notify all users that someone joined
     this.broadcastMessage(joinMessage);
+
+    this.sendTypingStatusToSingleClient(ws);
+  }
+  private sendTypingStatusToSingleClient(ws: WebSocket) {
+    const typingUsernames = Array.from(this.typingUsers.values()).map(
+      (status) => status.username,
+    );
+
+    if (typingUsernames.length > 0) {
+      const typingUpdate: ServerTypingUpdate = {
+        type: 'typing_update',
+        usersTyping: typingUsernames,
+        timestamp: Date.now(),
+      };
+      try {
+        ws.send(JSON.stringify(typingUpdate));
+      } catch (e) {
+        console.error('Failed to send initial typing update to new client', e);
+      }
+    }
   }
 
   private async storeAndBroadCastMessage(clientMessage: ClientSendMessage) {
@@ -247,7 +335,20 @@ export class ChatWebSocketServer extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number) {
-    this.sessions.delete(ws);
+    const session = this.sessions.get(ws);
+    if (session) {
+      this.sessions.delete(ws);
+      if (this.typingUsers.has(session.userId)) {
+        this.typingUsers.delete(session.userId);
+        this.broadcastTypingStatus();
+      }
+      this.handleLeaveRoom(ws, {
+        type: 'leave',
+        userId: session.userId,
+        username: session.username,
+        timestamp: Date.now(),
+      });
+    }
     ws.close(code, 'Durable Object is closing WebSocket');
   }
 }

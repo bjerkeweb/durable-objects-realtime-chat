@@ -18,16 +18,6 @@ interface User {
   joinedAt: number;
 }
 
-type MessageType = 'message' | 'join' | 'leave';
-
-interface Message {
-  type: MessageType;
-  content?: string;
-  timestamp: number;
-  userId?: string;
-  username?: string;
-}
-
 const formatTime = (timestamp: number) => {
   return new Date(timestamp).toLocaleTimeString();
 };
@@ -36,8 +26,6 @@ const Chat: React.FC<ChatProps> = ({ username, userId, roomName }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ServerMessage[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-
-  console.log(messages);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

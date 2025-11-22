@@ -35,11 +35,17 @@ export interface RecentMessages extends BaseServerEvent {
   messages: ServerUserMessage[];
 }
 
+export interface ServerTypingUpdate extends BaseServerEvent {
+  type: 'typing_update';
+  usersTyping: string[];
+}
+
 export type ServerMessage =
   | UserJoined
   | UserLeft
   | ServerUserMessage
-  | RecentMessages;
+  | RecentMessages
+  | ServerTypingUpdate;
 
 // client messages
 interface BaseClientEvent {
@@ -62,4 +68,12 @@ export interface ClientSendMessage extends BaseClientEvent {
   content: string;
 }
 
-export type ClientMessage = ClientJoin | ClientLeave | ClientSendMessage;
+export interface ClientTyping extends BaseClientEvent {
+  type: 'typing' | 'stopped_typing';
+}
+
+export type ClientMessage =
+  | ClientJoin
+  | ClientLeave
+  | ClientSendMessage
+  | ClientTyping;
