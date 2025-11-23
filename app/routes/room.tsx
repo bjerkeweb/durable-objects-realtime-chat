@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
 import Chat from '~/components/Chat';
 
 import type { Route } from './+types/room';
 import UsernamePrompt from '~/components/UsernamePrompt';
 import type { UsernameCheckResponse } from './join';
+
+type User = {
+  username: string;
+  userId: string;
+};
 
 export async function clientAction({
   request,
@@ -11,13 +15,10 @@ export async function clientAction({
 }: Route.ClientActionArgs) {
   const formData = await request.formData();
   const username = formData.get('username');
-  const room = params.room;
+  const room = params.room.toLowerCase();
 
   const response = await fetch(
     `/api/${room}/check-username?username=${username}`,
-    {
-      method: 'GET',
-    },
   );
   const json = (await response.json()) as UsernameCheckResponse;
 
@@ -25,7 +26,7 @@ export async function clientAction({
     return { error: true };
   }
 
-  const user = {
+  const user: User = {
     username: String(username),
     userId: crypto.randomUUID(),
   };
@@ -37,7 +38,7 @@ export async function clientAction({
 export function clientLoader() {
   const storedUser = sessionStorage.getItem('chat-user');
   if (storedUser) {
-    return { user: JSON.parse(storedUser) };
+    return { user: JSON.parse(storedUser) as User };
   }
   return { user: undefined };
 }

@@ -20,7 +20,7 @@ export type UsernameCheckResponse = {
 export async function clientAction({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const username = formData.get('username');
-  const room = formData.get('room');
+  const room = String(formData.get('room')).toLowerCase();
 
   const response = await fetch(
     `/api/${room}/check-username?username=${username}`,
